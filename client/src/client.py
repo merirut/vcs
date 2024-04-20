@@ -22,11 +22,11 @@ def _add_file_to_tracked(metadir: Path, rel_path: Path):
     print("Added:", rel_path)
 
 
-def init():
+def init(args):
     existing_metadir = _find_metadir()
 
     if existing_metadir is not None:
-        print("Repository could not be nested:", existing_metadir)
+        print("Repositories could not be nested:", existing_metadir)
         return
 
     cur_dir = Path.cwd()
@@ -43,11 +43,13 @@ def init():
     tracked_file = hidden_dir / TRACKED_FILE_NAME
     tracked_file.touch()
 
+    print('Local repository initialized successfully')
+
     ok = server.init()
     if ok:
-        print('Repository initialized successfully')
+        print('Remote repository initialized successfully')
     else:
-        print('Failed to initialize repository')
+        print('Failed to initialize remote repository')
 
 
 def add(args):
