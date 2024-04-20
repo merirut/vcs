@@ -3,16 +3,23 @@
 #include <limits.h>
 #include <dirent.h>
 
-void recursive_check_if_changed (const char *dir_path) {
+typedef void (*FileFunction)(const char *);
+
+void recursive_apply_to_all_files (const char *dir_path, FileFunction file_function) {
 	DIR *dir = opendir(dir_path);
 	if (dir == NULL) {
 		printf("Error opening directory");
 	}
 	struct dirent *entry;
 	while ((entry = readdir(dir)) != NULL) {
-		if (!strcmp(entry -> d_name, ".") && !strcmp(entry -> d_name, "..")) {
-			if (entry -> d_type == DT_DIR && !strcmp(entry->d_name, ".vcs")) {
-				recursive_check_if_changed();
+		if (!strcmp(entry -> d_name, ".") || !strcmp(entry -> d_name, "..")) {
+			char path[PATH_MAX];
+			snprintf(path, sizeof(path), "%s/%s", dir_path, entry -> d_name);
+			if (entry -> d_type == DT_DIR && !strcmp(entry -> d_name, ".vcs")) {
+				recursive_apply_to_all_files(path, file_function);
+			} else {
+				file_function(path);
+			}
 		}
 	}
 }
