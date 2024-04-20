@@ -5,23 +5,28 @@
 
 typedef void (*FileFunction)(const char *);
 
-void recursive_apply_to_all_files (const char *dir_path, FileFunction file_function) {
+void recursive_traverse_file_tree (const char *dir_path, FileFunction file_function) {
 	DIR *dir = opendir(dir_path);
 	if (dir == NULL) {
 		printf("Error opening directory");
 	}
-	struct dirent *entry;
+	struct dirent* entry;
 	while ((entry = readdir(dir)) != NULL) {
 		if (!strcmp(entry -> d_name, ".") || !strcmp(entry -> d_name, "..")) {
 			char path[PATH_MAX];
 			snprintf(path, sizeof(path), "%s/%s", dir_path, entry -> d_name);
 			if (entry -> d_type == DT_DIR && !strcmp(entry -> d_name, ".vcs")) {
-				recursive_apply_to_all_files(path, file_function);
-			} else {
+				recursive_traverse_file_tree(path, file_function);
+			} else if (entry -> d_type == DT_REG) {
 				file_function(path);
 			}
 		}
 	}
+	closedir(dir);
+}
+
+void check_if_changed(const char *dir_path) {
+	return;
 }
 
 int main(int argc, char *argv[]) {
@@ -40,7 +45,7 @@ int main(int argc, char *argv[]) {
 			printf("Initialization was successful\n");
 			return 0;
 		} else {
-			struct dirent *entry;
+			struct dirent* entry;
 			int vcs_folder_found = 0;
 			while ((entry = readdir(dir)) != NULL) {
 				if (entry -> d_type == DT_DIR && strcmp(entry->d_name, ".vcs") == 0) {
@@ -51,11 +56,7 @@ int main(int argc, char *argv[]) {
 				if (strcmp(command, "status")) {
 					printf("Displaying status\n");
 					// Something to check if the files have changed
-					while ((entry = readdir(dir)) != NULL) {
-						if (entry -> d_type == DT_DIR && !strcmp(entry->d_name, ".vcs") == 0) {
-
-						}
-					}
+					recursive_traverse_file_tree(absolute_root_path, check_if_changed);
 				} else if(strcmp(command, "log")) {
 					printf("Displaying log\n");
 					char log_file_path[PATH_MAX];
