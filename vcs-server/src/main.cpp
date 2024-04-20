@@ -5,9 +5,9 @@
 #include <cstring>
 #include <cstdlib>
 #include <unistd.h>
-#include <filesystem>
 #include <arpa/inet.h>
 #include <sys/socket.h>
+#include <filesystem>
 
 const int PORT = 8080;
 const int BACKLOG = 5;
@@ -28,12 +28,6 @@ int create_repo(const std::string& currDirectory)
         std::cerr << "Error creating repository directory: " << e.what() << std::endl;
         return -1;
     }
-}
-
-std::string handle_status() 
-{
-    // Implement status checking logic here
-    return "No changes";
 }
 
 std::string handle_commit(const std::string& message, const std::string& fileList) 
@@ -101,9 +95,6 @@ int main()
         if (command == "init") 
         {
             response = (create_repo(currDirectory) == 0) ? "Repo created" : "Repo creation failed";
-        } else if (command == "status") 
-        {
-            response = handle_status();
         } else if (command == "commit") 
         {
             std::string message, fileList;
