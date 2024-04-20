@@ -18,7 +18,7 @@ def _find_metadir() -> Path | None:
 def _add_file_to_tracked(metadir: Path, rel_path: Path):
     tracked_file = metadir / TRACKED_FILE_NAME
     with open(tracked_file, "a") as out:
-        out.write(str(tracked_file) + '\n')
+        out.write(str(rel_path) + '\n')
     print("Added:", rel_path)
 
 
@@ -42,7 +42,6 @@ def init(args):
 
     tracked_file = hidden_dir / TRACKED_FILE_NAME
     tracked_file.touch()
-
     print('Local repository initialized successfully')
 
     ok = server.init()
@@ -58,17 +57,18 @@ def add(args):
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
 
+    root_dir = metadir.parent
     for rel_path in relative_paths:
-        path = metadir / rel_path
+        path = root_dir / rel_path
         if not path.exists():
             print(f"File {path} not exists")
             continue
 
         if path.is_dir():
             for nested_file in path.rglob('*'):
-                _add_file_to_tracked(nested_file.relative_to(path))
+                _add_file_to_tracked(metadir, nested_file.relative_to(root_dir))
         elif path.is_file():
-            _add_file_to_tracked(path)
+            _add_file_to_tracked(metadir, path.relative_to(root_dir))
 
 
 def status(args):
