@@ -5,10 +5,14 @@ import serverstub as server
 HIDDEN_DIR_NAME = ".vcs"
 TRACKED_FILE_NAME = ".tracked"
 CHANGED_FILE_NAME = ".changed"
+HEAD_HASH = ".head"
 
 
 def _find_metadir() -> Path | None:
     cur_dir = Path.cwd()
+    candidate = cur_dir / HIDDEN_DIR_NAME
+    if candidate.exists():
+        return candidate
     for parent in cur_dir.parents:
         candidate = parent / HIDDEN_DIR_NAME
         if candidate.exists():
@@ -20,6 +24,13 @@ def _add_file_to_tracked(metadir: Path, rel_path: Path):
     with open(tracked_file, "a") as out:
         out.write(str(rel_path) + '\n')
     print("Added:", rel_path)
+
+
+def _get_head_hash() -> str | None:
+    hash_head_file = _find_metadir() / HEAD_HASH
+    with open(hash_head_file, "r") as inp:
+        line = inp.readline()
+    return line
 
 
 def init(args):
@@ -41,6 +52,9 @@ def init(args):
     changed_file.touch()
 
     tracked_file = hidden_dir / TRACKED_FILE_NAME
+    tracked_file.touch()
+
+    tracked_file = hidden_dir / HEAD_HASH
     tracked_file.touch()
     print('Local repository initialized successfully')
 
@@ -84,4 +98,22 @@ def reset(args):
 
 
 def log(args):
-    pass
+    commits = server.log()
+    if commits is None:
+        print("Failed to receive commit logs from server")
+        return
+
+    if not commits:
+        print("No commits added yet")
+        return
+
+    head_hash = _get_head_hash()
+    if head_hash is None or not head_hash.strip():
+        print("Alert: Head is not defined")
+    else:
+        head_hash = head_hash.strip()
+
+    print("Commit log:")
+    for hsh, message in commits:
+        pointer = "->" if hsh == head_hash else "  "
+        print(f'{pointer} {hsh}: "{message}"')
