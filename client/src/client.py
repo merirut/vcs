@@ -1,4 +1,5 @@
 from pathlib import Path
+import shutil
 
 import serverstub as server
 
@@ -35,7 +36,6 @@ def _get_head_hash() -> str | None:
 
 def init(args):
     existing_metadir = _find_metadir()
-
     if existing_metadir is not None:
         print("Repositories could not be nested:", existing_metadir)
         return
@@ -66,12 +66,13 @@ def init(args):
 
 
 def add(args):
-    relative_paths = args.files
     metadir = _find_metadir()
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
+        return
 
     root_dir = metadir.parent
+    relative_paths = args.files
     for rel_path in relative_paths:
         path = root_dir / rel_path
         if not path.exists():
@@ -94,10 +95,41 @@ def commit(args):
 
 
 def reset(args):
-    pass
+    metadir = _find_metadir()
+    if metadir is None:
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
+        return
+
+    # TODO: prompt user about local changes deletion
+    hash_to_reset = args.hash
+    snapshot_path = server.reset(hash_to_reset)
+    if snapshot_path is None:
+        print("Failed to reset: no snapshot path returned")
+        return
+
+    snapshot_path = Path(snapshot_path)
+    if not snapshot_path.exists():
+        print("Failed to reset: snapshot path not exists")
+        return
+
+    root_dir = metadir.parent
+    for path in root_dir.glob("*"):
+        if path.is_dir() and path.name != HIDDEN_DIR_NAME:
+            shutil.rmtree(path)
+        elif path.is_file():
+            path.unlink()
+        # TODO: add symlinks handling?
+
+    shutil.copytree(snapshot_path, root_dir, dirs_exist_ok=True)
+    print("Reset completed!")
 
 
 def log(args):
+    metadir = _find_metadir()
+    if metadir is None:
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
+        return
+
     commits = server.log()
     if commits is None:
         print("Failed to receive commit logs from server")
