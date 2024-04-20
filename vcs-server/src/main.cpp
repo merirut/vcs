@@ -46,7 +46,7 @@ std::string handle_reset(const std::string& commitHash)
 
 int main() 
 {
-    int server_fd, new_socket;
+    int server_fd;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
 
@@ -75,7 +75,8 @@ int main()
 
     // Accept incoming connections and handle requests
     while (true) 
-    {
+    {   
+        int new_socket;
         if ((new_socket = accept(server_fd, (struct sockaddr *)&address, (socklen_t*)&addrlen)) < 0) 
         {
             std::cerr << "Accept failed" << std::endl;
