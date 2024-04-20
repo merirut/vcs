@@ -10,17 +10,16 @@
 
 const int PORT = 8080;
 const int BACKLOG = 5;
-const std::string REPO_DIRECTORY_EXT = ".vcs";
+const std::string COMMITS_TABLE_NAME = "commits_table.txt";
 
-
-int create_repo(const std::string& currDirectory) 
+int initRepo(const std::string &repoDirPath, const std::string &commitsTableFile) 
 {
-    std::string repoDirectory = currDirectory + "/" + REPO_DIRECTORY_EXT;
     try 
     {
-        std::filesystem::create_directory(repoDirectory);
-        // Additional setup tasks can be done here
-        std::cout << "Created repository in " << repoDirectory << std::endl;
+        std::filesystem::create_directory(repoDirPath);
+        std::ofstream commitsTable(commitsTableFile);
+        
+        std::cout << "Created repository in " << repoDirPath << std::endl;
         return 0;
     } catch (const std::filesystem::filesystem_error& e) 
     {
@@ -29,28 +28,29 @@ int create_repo(const std::string& currDirectory)
     }
 }
 
-std::string handle_status() 
+std::string commit(const std::string& message, const std::string& currDir, const std::string& headHash, const std::string& newHash) 
 {
-    // Implement status checking logic here
-    return "No changes";
+    // TODO
+    return "OK";
 }
 
-std::string handle_commit(const std::string& message, const std::string& fileList) 
+std::string reset(const std::string& commitHash) 
 {
-    // Implement commit logic here
-    // For simplicity, let's just return a dummy commit hash
-    return "abcdef123456";
+    // TODO
+    return "path to commit dir";
 }
 
-std::string handle_reset(const std::string& commitHash) 
+int main(int argc, char* argv[]) 
 {
-    // Implement reset logic here
-    // For simplicity, let's just return a success message
-    return "Reset successful";
-}
+    if (argc < 2) 
+    {
+        std::cerr << "Usage: " << argv[0] << " [storage path]" << std::endl;
+        return 1;
+    }
 
-int main() 
-{
+    const std::string REPO_DIRECTORY = argv[1];
+    const std::string COMMITS_TABLE = std::filesystem::path(REPO_DIRECTORY) / COMMITS_TABLE_NAME;
+
     int server_fd, new_socket;
     struct sockaddr_in address;
     int addrlen = sizeof(address);
@@ -94,28 +94,36 @@ int main()
         std::istringstream iss(buffer);
         std::string command, currDirectory;
         iss >> command;
-        iss >> currDirectory;
 
         std::string response;
         if (command == "init") 
         {
-            response = (create_repo(currDirectory) == 0) ? "Repo created" : "Repo creation failed";
-        } else if (command == "status") 
+            response = (initRepo(REPO_DIRECTORY, COMMITS_TABLE) == 0) ? "Repo created" : "Repo creation failed";
+        } else if (command == "log") 
         {
-            response = handle_status();
-        } else if (command == "commit") 
+            response = COMMITS_TABLE;
+        }
+        else if (command == "commit") 
         {
-            std::string message, fileList;
-            iss >> std::quoted(message) >> std::quoted(fileList);
-            response = handle_commit(message, fileList);
+            std::string message, currDir, headHash, newHash;
+            iss >> std::quoted(message) >> currDir >> headHash >> newHash;
+
+            if (message.empty() or currDir.empty() or headHash.empty() or newHash.empty())
+                response = "Error: not enough arguments. Usage: commit \"[commit_message]\" [head_hash] [new hash]";
+            else
+                response = commit(message, currDir, headHash, newHash);
         } else if (command == "reset") 
         {
             std::string commitHash;
-            iss >> std::quoted(commitHash);
-            response = handle_reset(commitHash);
+            iss >> commitHash;
+
+            if (commitHash.empty())
+                response = "Error: empty commit hash";
+            else
+                response = reset(commitHash);
         } else 
         {
-            response = "Invalid command";
+            response = "Error: invalid command";
         }
 
         // Send response back to the client
