@@ -1,9 +1,8 @@
 import colorama
-from create_changes import calculate_hash, generate_changes
+from create_changes import calculate_hash
 from pathlib import Path
 from datetime import datetime
 import shutil
-import os
 
 import serverstub as server
 
@@ -89,8 +88,10 @@ def _delete_dir_from_tracked(metadir, path):
 
 
 def _traverse_file_tree_from_dir(metadir, path, function_applied_to_file):
-    for nested_file in path.rglob('*'):
-        function_applied_to_file(metadir, nested_file)
+    for nested_path in path.rglob('*'):
+        if nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts:
+            print("Trav", nested_path)
+            function_applied_to_file(metadir, nested_path)
 
 
 def init(args):
@@ -172,12 +173,11 @@ def commit(message):
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
-    generate_changes(metadir)
     head_hash = _get_head_hash()
-    new_hash = _generate_new_hash()
-    success = server.commit(message, str(metadir.parent), head_hash, new_hash)
-
-    if not success:
+    # generate_changes(metadir)
+    # new_hash = _generate_new_hash()
+    ok = server.commit(message, str(metadir.parent), head_hash, new_hash)
+    if not ok:
         print("Something went wrong!")
 
 
