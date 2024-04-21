@@ -116,7 +116,6 @@ def _read_tracked(metadir: Path, relative: bool = True) -> dict[str, str]:
             tracked_shas_from_prev_commit[path] = sha
     return tracked_shas_from_prev_commit
 
-
 def status(args):
     added_files, modified_files, deleted_files = _calculate_status()
     if not added_files and not modified_files and not deleted_files:
@@ -140,7 +139,8 @@ def _calculate_status():
         return
 
     root_dir = metadir.parent
-    sha_by_rel_path = _read_tracked(metadir)
+    original_tracked = _read_tracked(metadir)
+    sha_by_rel_path = original_tracked.copy()
     all_files = _list_traversal_from(root_dir)
     modified_files = []
     added_files = []
@@ -154,7 +154,17 @@ def _calculate_status():
             elif sha_from_last_commit != fresh_sha:
                 modified_files.append(file)
 
-    deleted_files = sha_by_rel_path.keys()
+    tracked_file = metadir / TRACKED_FILE_NAME
+
+    deleted_files = list(filter(lambda p: sha_by_rel_path[p] != '0', sha_by_rel_path.keys()))
+
+    files_to_delete_from_tracked = list(filter(lambda p: sha_by_rel_path[p] == '0', sha_by_rel_path.keys()))
+    if files_to_delete_from_tracked:
+        with open(tracked_file, "w") as file:
+            for rel_path, sha in original_tracked.items():
+                if rel_path not in files_to_delete_from_tracked:
+                    file.write(f"{rel_path} {sha}\n")
+
     return added_files, modified_files, deleted_files
 
 
@@ -172,7 +182,10 @@ def commit(message):
     root_dir = metadir.parent
     head_hash = _get_head_hash()
     # generate .changes
-    _generate_changes_file(metadir)
+    changes_generated = _generate_changes_file(metadir)
+    if not changes_generated:
+        print("There is nothing to commit!")
+        return
     # calculate new commit hash
     new_hash, sha_by_abs_path = calculate_hash_for_files(_read_tracked(metadir, relative=False))
     # send to server
@@ -180,19 +193,21 @@ def commit(message):
     if not ok:
         print("Failed to commit: something went wrong!")
         return
+    print("Committed successfully!")
     # update shas in .tracked
     _override_tracked(metadir, sha_by_abs_path)
     # update head
-    _override_head(metadir, head_hash)
+    _override_head(metadir, new_hash)
     # clear changes
     _clear_changes(metadir)
 
 
-def _override_tracked(metadir, sha_by_rel_path):
+def _override_tracked(metadir, sha_by_abs_path):
     tracked_file = metadir / TRACKED_FILE_NAME
+    root_dir = metadir.parent
     with open(tracked_file, "w") as file:
-        for rel_path, sha in sha_by_rel_path:
-            file.write(rel_path + " " + sha)
+        for abs_path, sha in sha_by_abs_path.items():
+            file.write(f"{Path(abs_path).relative_to(root_dir)} {sha}\n")
 
 
 def _override_head(metadir, new_head_hash):
@@ -206,11 +221,10 @@ def _clear_changes(metadir):
     open(changes_file, 'w').close()
 
 
-def _generate_changes_file(metadir: Path) -> None:
+def _generate_changes_file(metadir: Path) -> bool:
     added_files, modified_files, deleted_files = _calculate_status()
     if not added_files and not modified_files and not deleted_files:
-        print("There is nothing to commit!")
-        return
+        return False
 
     changes_file = metadir / CHANGED_FILE_NAME
     with open(changes_file, "w") as file:
@@ -222,7 +236,7 @@ def _generate_changes_file(metadir: Path) -> None:
 
         for f in deleted_files:
             file.write(f"d {f}\n")
-
+    return True
 
 def reset(args):
     metadir = _find_metadir()

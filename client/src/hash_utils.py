@@ -12,7 +12,6 @@ def calculate_hash_for_files(tracked_files: dict[str, str]) -> tuple[str, dict[s
     sha_by_path = {}
     global_sha = hashlib.sha256()
     sorted_files = sorted(map(lambda x: str(x), tracked_files.keys()))
-    print(sorted_files)
     for file in sorted_files:
         local_sha = hashlib.sha256()
         local_sha.update(file.encode('utf-8'))
