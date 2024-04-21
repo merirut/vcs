@@ -6,6 +6,7 @@
 const std::string VCS_DIR_NAME = ".vcs";
 const std::string TMP_FILE_NAME = ".handled.txt.tmp";
 const std::string COMMITS_TABLE_NAME = "commits_table.txt";
+const std::string COMMITS_TABLE_TMP_NAME = "commits_table_tmp.txt";
 const std::string CHANGES_FILE_NAME = ".changes"; 
 
 Repository::Repository(const std::string &repoDirectory) : 
@@ -20,6 +21,7 @@ std::string Repository::init() noexcept
         std::filesystem::create_directory(m_directory);
         std::ofstream commitsTable(m_commitsTable);
         std::filesystem::create_directory(m_directory/"0");
+        writeCommitToTable("0", "init commit");
         
         std::cout << "Created repository in " << m_directory.c_str() << std::endl;
         return "OK";
@@ -47,33 +49,43 @@ std::string Repository::reset(const std::string &commitHash) noexcept
 
 int Repository::dropPreviousCommits(const std::string &headHash) noexcept
 {
-    std::ifstream commitsTable(m_commitsTable);
-    std::ofstream commitsTableNew(m_commitsTable.string() + ".tmp");
-
-    bool found = false;
-    std::string commitHash, date, time, commitMessage;
-    while (!commitsTable.eof())
     {
-        commitsTable >> commitHash >> date >> time >> commitMessage;
+        std::ifstream commitsTable(m_commitsTable);
+        std::ofstream commitsTableNew(m_directory/COMMITS_TABLE_TMP_NAME, std::fstream::app);
 
-        if (found)
+        bool found = false;
+        std::string commitHash, datetime, commitMessage;
+        while (commitsTable >> commitHash >> datetime >> std::quoted(commitMessage))
         {
-            try
+            if (found)
             {
-                std::filesystem::remove(m_directory/commitHash);
-            } catch(const std::exception& e)
+                try
+                {
+                    std::filesystem::remove_all(m_directory/commitHash);
+                } catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                    return -1;
+                }
+            }
+            else
             {
-                std::cerr << e.what() << '\n';
+                commitsTableNew << commitHash << " " << datetime << " " << '\"' << commitMessage << '\"' << "\n";
+                if (commitHash == headHash)
+                    found = true;
             }
         }
-        else if (commitHash == headHash)
-        {
-            found = true;
-        }
-        else
-        {
-            commitsTableNew << commitHash << " " << date << " " << time << " " << commitMessage << "\n";
-        }
+    }
+    
+    try
+    {
+        std::filesystem::remove(m_commitsTable);
+        std::filesystem::rename(m_directory/COMMITS_TABLE_TMP_NAME, m_commitsTable);
+    }
+    catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        return -1;
     }
 
     return 0;
@@ -81,23 +93,32 @@ int Repository::dropPreviousCommits(const std::string &headHash) noexcept
 
 int Repository::copyModifiedFiles(const std::string &workDir, const std::string &newHash) noexcept
 {
+    try // copy the directory structure, no files
+    {
+        const auto copyOptions = std::filesystem::copy_options::recursive | std::filesystem::copy_options::directories_only;
+        std::filesystem::copy(workDir, m_directory/newHash, copyOptions);
+    } catch(const std::exception& e)
+    {
+        std::cerr << e.what() << '\n';
+        return -1;
+    }
+    
     std::ifstream changesList(std::filesystem::path(workDir)/VCS_DIR_NAME/CHANGES_FILE_NAME);
     std::ofstream handledFilesList(m_directory/newHash/TMP_FILE_NAME);
 
     char type;
     std::string filepath;
-    while (!changesList.eof())
+    while (changesList >> type >> filepath)
     {
-        changesList >> type >> filepath;
-
         if (type == 'a' or type == 'm')
         {
             try
             {
                 auto src = std::filesystem::path(workDir)/filepath;
-                auto target = std::filesystem::path(m_directory/newHash)/filepath;
+                auto target = m_directory/newHash/filepath;
+                std::cout << "Copying modified file " << src.c_str() << " to " << target.c_str() << std::endl;
                 std::filesystem::copy(src, target);
-                handledFilesList << filepath;
+                handledFilesList << filepath << "\n";
             } catch (std::exception& e)
             {
                 std::cerr << e.what();
@@ -106,38 +127,42 @@ int Repository::copyModifiedFiles(const std::string &workDir, const std::string 
         }
         else if (type == 'd')
         {
-            handledFilesList << filepath;
+            handledFilesList << filepath << "\n";
         }
     }
 
     return 0;
 }
 
-bool isException(const std::filesystem::path &filepath, const std::filesystem::path &exceptionsPath)
+bool isException(const std::filesystem::path &filepath, const std::filesystem::path &exceptionsPath, const std::filesystem::path &commitDir)
 {
     std::ifstream exceptions(exceptionsPath);
     std::string line;
     while (std::getline(exceptions, line))
     {
-        if (std::filesystem::path(line) == filepath)
+        if (commitDir/line == filepath)
             return true;
     }
 
     return false;
 }
 
-int copyDirContentRecursively(const std::filesystem::path &src, const std::filesystem::path &target, const std::filesystem::path &exceptions)
+int copyDirContentRecursively(const std::filesystem::path &src, const std::filesystem::path &target, const std::filesystem::path &exceptions, const std::filesystem::path &commitDir)
 {
     for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(src))
     {
         if (std::filesystem::is_directory(dirEntry.path()))
-            copyDirContentRecursively(dirEntry.path(), target, exceptions);
+            copyDirContentRecursively(dirEntry.path(), target, exceptions, commitDir);
         else
-            if (!isException(dirEntry.path(), exceptions))
+            if (isException(dirEntry.path(), exceptions, commitDir) == false)
             {
                 try
                 {
-                    std::filesystem::copy(dirEntry.path(), target);
+                    std::filesystem::path relativePath = dirEntry.path().lexically_relative(commitDir);
+                    std::filesystem::path targetFilePath = target/relativePath;
+                    std::cout << "Copying unmodified file " << dirEntry.path().c_str() << " to " << targetFilePath.c_str() << std::endl;
+                    std::filesystem::copy(dirEntry.path(), targetFilePath, std::filesystem::copy_options::skip_existing);
+                    std::ofstream handledFilesList(exceptions, std::fstream::app);                    
                 } catch(const std::exception& e)
                 {
                     std::cerr << e.what() << '\n';
@@ -151,9 +176,9 @@ int copyDirContentRecursively(const std::filesystem::path &src, const std::files
 
 int Repository::copyUnmodifedFiles(const std::string &headHash, const std::string &newHash) noexcept
 {
-    auto handledFilesListPath = std::filesystem::path(newHash)/TMP_FILE_NAME;
+    auto handledFilesListPath = m_directory/newHash/TMP_FILE_NAME;
 
-    return copyDirContentRecursively(m_directory/headHash, m_directory/newHash, handledFilesListPath);
+    return copyDirContentRecursively(m_directory/headHash, m_directory/newHash, handledFilesListPath, m_directory/headHash);
 }
 
 std::string getCurrentDateAndTime()
@@ -167,7 +192,7 @@ std::string getCurrentDateAndTime()
     std::tm tm = *std::localtime(&time);
 
     std::stringstream ss;
-    ss << std::put_time(&tm, "%Y/%m/%d %H:%M:%S");
+    ss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S");
     return ss.str();
 }
 
@@ -175,8 +200,8 @@ int Repository::writeCommitToTable(const std::string &commitHash, const std::str
 {
     try
     {
-        std::ofstream commitTable(m_commitsTable);
-        commitTable << commitHash << " " << getCurrentDateAndTime() << " " << commitMessage << "\n";
+        std::ofstream commitsTable(m_commitsTable, std::fstream::app);
+        commitsTable << commitHash << " " << getCurrentDateAndTime() << " " << '\"' << commitMessage << '\"' << "\n";
 
         return 0;
     } catch(const std::exception& e)
@@ -188,7 +213,7 @@ int Repository::writeCommitToTable(const std::string &commitHash, const std::str
 
 std::string Repository::commit(const std::string &message, const std::string &workDir, const std::string &headHash, const std::string &newHash) noexcept
 {
-    if (message.empty() or workDir.empty() or headHash.empty() or newHash.empty())
+    if (message.empty() or workDir.empty() or newHash.empty() or headHash.empty())
         return "Error: not enough arguments. Usage: commit \"[commit_message]\" [head_hash] [new hash]";
     else
     {
@@ -205,12 +230,18 @@ std::string Repository::commit(const std::string &message, const std::string &wo
         }
 
         if (copyModifiedFiles(workDir, newHash) != 0)
-                return "Internal error";
-    
-        if (copyUnmodifedFiles(headHash, newHash) != 0)
+        {
+            std::filesystem::remove_all(m_directory/newHash);
             return "Internal error";
+        }
+            
+        if (copyUnmodifedFiles(headHash, newHash) != 0)
+        {
+            std::filesystem::remove_all(m_directory/newHash);
+            return "Internal error";
+        }
 
-        std::filesystem::remove(m_directory/newHash/TMP_FILE_NAME);
+        std::filesystem::remove(m_directory/newHash/TMP_FILE_NAME); // relative pathes of added, modified and deleted files
 
         writeCommitToTable(newHash, message);
     }

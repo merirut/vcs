@@ -28,7 +28,8 @@ int main(int argc, char* argv[])
     int addrlen = sizeof(address);
 
     // Create a TCP socket
-    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
+    if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) 
+    {
         std::cerr << "Socket creation failed" << std::endl;
         return 1;
     }
@@ -39,7 +40,8 @@ int main(int argc, char* argv[])
     address.sin_port = htons(PORT);
 
     // Bind the socket to localhost and port
-    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) {
+    if (bind(server_fd, (struct sockaddr *)&address, sizeof(address)) < 0) 
+    {
         std::cerr << "Bind failed" << std::endl;
         return 1;
     }
@@ -70,7 +72,7 @@ int main(int argc, char* argv[])
         std::string response;
         if (command == "init") 
         {
-            response = repository.init();
+            response = repository.init(); 
         } else if (command == "log") 
         {
             response = repository.log();
@@ -95,6 +97,7 @@ int main(int argc, char* argv[])
         // Send response back to the client
         send(new_socket, response.c_str(), response.length(), 0);
         close(new_socket);
+        std::cout << std::endl;
     }
 
     return 0;
