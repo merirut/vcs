@@ -64,6 +64,7 @@ def _add_file_to_tracked(metadir: Path, rel_path_from_root: Path):
     else:
         print(rel_path_from_root, "is already tracking")
 
+
 def _traverse_from(metadir, path, function_applied_to_file):
     for nested_path in path.rglob('*'):
         if nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts:
@@ -71,9 +72,9 @@ def _traverse_from(metadir, path, function_applied_to_file):
             function_applied_to_file(metadir, nested_path)
 
 
-def _list_traversal_from(path):
-    return filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
-                  path.rglob('*'))
+def _list_traversal_from(path: Path) -> list[Path]:
+    return list(filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
+                       path.rglob('*')))
 
 
 def init(args):
@@ -133,6 +134,7 @@ def status(args):
     modified_files = []
     added_files = []
     for file in all_files:
+        file = str(file.relative_to(root_dir))
         if file in sha_by_rel_path:
             fresh_sha = calculate_hash(file)
             sha_from_last_commit = sha_by_rel_path.pop(file)
@@ -140,6 +142,7 @@ def status(args):
                 added_files.append(file)
             elif sha_from_last_commit != fresh_sha:
                 modified_files.append(file)
+
     deleted_files = sha_by_rel_path.keys()
 
     if not added_files and not modified_files and not deleted_files:
