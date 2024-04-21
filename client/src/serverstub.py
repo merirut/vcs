@@ -15,7 +15,7 @@ def init() -> bool:
     return return_code == 0 and status == "OK"
 
 
-def log() -> list[tuple[str, datetime, str]] | None:
+def log() -> list[tuple[str, str, str]] | None:
     """
     :return: chronological list of commits in format (hash, message)
     """
@@ -23,7 +23,7 @@ def log() -> list[tuple[str, datetime, str]] | None:
     commits_table = result.stdout.decode('utf-8').strip()
     return_code = result.returncode
     if return_code != 0:
-        return
+        return None
 
     commits = []
     with open(commits_table, "r") as file:
@@ -41,7 +41,10 @@ def commit(message: str, root_dir: str, head_hash: str, new_hash: str) -> bool:
     :param new_hash: calculated hash of new commit
     :return: OK or not
     """
-    return True
+    result = subprocess.run([server_exec, "commit", message, root_dir, head_hash, new_hash], stdout=subprocess.PIPE)
+    status = result.stdout.decode('utf-8').strip()
+    return_code = result.returncode
+    return return_code == 0 and status == "OK"
 
 
 def reset(hash_to_reset: str) -> str | None:
@@ -49,4 +52,9 @@ def reset(hash_to_reset: str) -> str | None:
     :param hash_to_reset: hash of target commit
     :return: absolute path where requested repo state should be copied from
     """
-    return "/Users/ilakonovalov/IdeaProjects/vcs/tests/test1/snapshots"
+    result = subprocess.run([server_exec, "reset", hash_to_reset], stdout=subprocess.PIPE)
+    commit_dir = result.stdout.decode('utf-8').strip()
+    return_code = result.returncode
+    if return_code == 0 and commit_dir != "Error: empty commit hash" and commit_dir != "Error: empty commit hash":
+        return commit_dir
+    return None
