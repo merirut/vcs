@@ -43,8 +43,8 @@ def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_ap
     if not args.files:
         function_nothing_specified(metadir, root_dir)
     for rel_path in relative_paths:
-        if _is_in_vcs(rel_path):
-            print(f"{rel_path} - Files in .vcs cannot be altered!")
+        if _is_inside_metadir(rel_path):
+            print(f"{rel_path} - Files in {HIDDEN_DIR_NAME} cannot be altered!")
             continue
         path = root_dir / rel_path
         if not path.exists():
@@ -56,7 +56,7 @@ def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_ap
             function_applied_to_file(metadir, path)
 
 
-def _is_in_vcs(path):
+def _is_inside_metadir(path):
     return HIDDEN_DIR_NAME in path.parts
 
 
@@ -75,12 +75,9 @@ def _add_file_to_tracked(metadir: Path, path: Path):
 def _delete_file_from_tracked(metadir, path):
     rel_path = path.relative_to(metadir.parent)
     tracked_file = metadir / TRACKED_FILE_NAME
-    with open(tracked_file, "r") as in_file:
-        temp_file_path = tracked_file.with_suffix('.tmp')
-        with open(temp_file_path, "a") as out_file:
-            for line in in_file.readlines():
-                if line.strip() != str(rel_path):
-                    out_file.write(str(rel_path) + "\n")
+    with open(tracked_file, "rw") as file:
+        filtered = filter(lambda line: line != rel_path, file.readlines())
+        file.writelines(filtered)
 
 
 def _add_dir_to_tracked(metadir: Path, path: Path):
