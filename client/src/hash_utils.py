@@ -3,6 +3,9 @@ import hashlib
 
 def calculate_hash_for_file(file_path):
     sha = hashlib.sha256()
+    file_path = str(file_path)
+    sha.update(file_path.encode('utf-8'))
+
     with open(file_path, 'rb') as f:
         sha.update(f.read())
     return sha.hexdigest()

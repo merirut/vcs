@@ -144,15 +144,15 @@ def _calculate_status():
     all_files = _list_traversal_from(root_dir)
     modified_files = []
     added_files = []
-    for file in all_files:
-        file = str(file.relative_to(root_dir))
-        if file in sha_by_rel_path:
-            fresh_sha = calculate_hash_for_file(file)
-            sha_from_last_commit = sha_by_rel_path.pop(file)
+    for abs_file in all_files:
+        rel_file = str(abs_file.relative_to(root_dir))
+        if rel_file in sha_by_rel_path:
+            fresh_sha = calculate_hash_for_file(abs_file)
+            sha_from_last_commit = sha_by_rel_path.pop(rel_file)
             if sha_from_last_commit == "0":  # added first time, not committed yet
-                added_files.append(file)
+                added_files.append(rel_file)
             elif sha_from_last_commit != fresh_sha:
-                modified_files.append(file)
+                modified_files.append(rel_file)
 
     tracked_file = metadir / TRACKED_FILE_NAME
 
@@ -160,10 +160,10 @@ def _calculate_status():
 
     files_to_delete_from_tracked = list(filter(lambda p: sha_by_rel_path[p] == '0', sha_by_rel_path.keys()))
     if files_to_delete_from_tracked:
-        with open(tracked_file, "w") as file:
+        with open(tracked_file, "w") as rel_file:
             for rel_path, sha in original_tracked.items():
                 if rel_path not in files_to_delete_from_tracked:
-                    file.write(f"{rel_path} {sha}\n")
+                    rel_file.write(f"{rel_path} {sha}\n")
 
     return added_files, modified_files, deleted_files
 
@@ -187,6 +187,7 @@ def commit(message):
         print("There is nothing to commit!")
         return
     # calculate new commit hash
+
     new_hash, sha_by_abs_path = calculate_hash_for_files(_read_tracked(metadir, relative=False))
     # send to server
     ok = server.commit(message, str(root_dir), head_hash, new_hash)
