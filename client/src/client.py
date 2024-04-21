@@ -29,70 +29,40 @@ def _get_head_hash() -> str | None:
 
 
 def add(args):
-    # TODO: add file to tracked with sha = 0
-    return _apply_tracked_operation_to_files(args, _add_dir_to_tracked, _add_file_to_tracked, _add_dir_to_tracked)
-
-
-def remove(args):
-    return _apply_tracked_operation_to_files(args, _delete_dir_from_tracked, _delete_file_from_tracked,
-                                             _delete_dir_from_tracked)
-
-
-def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_applied_to_file,
-                                      function_nothing_specified):
+    relative_paths = args.files
     metadir = _find_metadir()
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
-        return
+
     root_dir = metadir.parent
-    relative_paths = args.files
-    if not args.files:
-        function_nothing_specified(metadir, root_dir)
     for rel_path in relative_paths:
-        if _is_inside_metadir(rel_path):
-            print(f"{rel_path} - Files in {HIDDEN_DIR_NAME} cannot be altered!")
+        abs_path = root_dir / rel_path
+
+        if not abs_path.exists():
+            print(f"File {abs_path} not exists")
             continue
-        path = root_dir / rel_path
-        if not path.exists():
-            print(f"Destination {rel_path} does not exist")
+
+        if HIDDEN_DIR_NAME in abs_path.parts:
+            print(f"File {abs_path} cannot be inside metadir")
             continue
-        if path.is_dir():
-            function_applied_to_dir(metadir, path)
-        elif path.is_file():
-            function_applied_to_file(metadir, path)
+
+        if abs_path.is_dir():
+            for nested_file in _list_traversal_from(abs_path):
+                _add_file_to_tracked(metadir, nested_file.relative_to(abs_path))
+
+        elif abs_path.is_file():
+            _add_file_to_tracked(metadir, abs_path)
 
 
-def _is_inside_metadir(path):
-    return HIDDEN_DIR_NAME in path.parts
-
-
-def _add_file_to_tracked(metadir: Path, path: Path):
-    rel_path = path.relative_to(metadir.parent)
+def _add_file_to_tracked(metadir: Path, rel_path_from_root: Path):
     tracked_file = metadir / TRACKED_FILE_NAME
-    with open(tracked_file, "ra") as file:
-        lines = file.read().splitlines()
-        if rel_path not in lines:
-            file.write(str(rel_path) + "\n")
-            print("Added: ", rel_path)
-        else:
-            print(rel_path, "is already tracking")
-
-
-def _delete_file_from_tracked(metadir, path):
-    rel_path = path.relative_to(metadir.parent)
-    tracked_file = metadir / TRACKED_FILE_NAME
-    with open(tracked_file, "rw") as file:
-        filtered = filter(lambda line: line != rel_path, file.readlines())
-        file.writelines(filtered)
-
-
-def _add_dir_to_tracked(metadir: Path, path: Path):
-    return _traverse_from(metadir, path, _add_file_to_tracked)
-
-
-def _delete_dir_from_tracked(metadir, path):
-    return _traverse_from(metadir, path, _delete_file_from_tracked)
-
+    tracked_rel_paths = _read_tracked(metadir).keys()
+    if str(rel_path_from_root) not in tracked_rel_paths:
+        with open(tracked_file, "a") as file:
+            file.write(str(rel_path_from_root) + " 0\n")
+            print("Added: ", rel_path_from_root)
+    else:
+        print(rel_path_from_root, "is already tracking")
 
 def _traverse_from(metadir, path, function_applied_to_file):
     for nested_path in path.rglob('*'):
@@ -140,7 +110,7 @@ def init(args):
         print("Failed to initialize remote repository")
 
 
-def _extract_tracked_shas(metadir):
+def _read_tracked(metadir):
     tracked_file = metadir / TRACKED_FILE_NAME
     tracked_shas_from_prev_commit = {}
     with open(tracked_file, "r") as file:
@@ -158,7 +128,7 @@ def status(args):
         return
 
     root_dir = metadir.parent
-    sha_by_rel_path = _extract_tracked_shas(metadir)
+    sha_by_rel_path = _read_tracked(metadir)
     all_files = _list_traversal_from(root_dir)
     modified_files = []
     added_files = []
