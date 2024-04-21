@@ -57,17 +57,19 @@ def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_ap
 
 
 def _is_in_vcs(path):
-    return ".vcs" in path.parts
+    return HIDDEN_DIR_NAME in path.parts
 
 
 def _add_file_to_tracked(metadir: Path, path: Path):
     rel_path = path.relative_to(metadir.parent)
     tracked_file = metadir / TRACKED_FILE_NAME
-    if not _is_in_tracked(metadir, rel_path):
-        with open(tracked_file, "a") as out:
-            out.write(str(rel_path) + "\n")
-        print("Added: ", rel_path)
-    print("Already tracking")
+    with open(tracked_file, "ra") as file:
+        lines = file.read().splitlines()
+        if rel_path not in lines:
+            file.write(str(rel_path) + "\n")
+            print("Added: ", rel_path)
+        else:
+            print("Already tracking")
 
 
 def _delete_file_from_tracked(metadir, path):
@@ -216,7 +218,7 @@ def reset(args):
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
 
-    # TODO: prompt user about local changes deletion
+    # TODO: prompt user about localchanges deletion
     hash_to_reset = args.hash
     snapshot_path = server.reset(hash_to_reset)
     if snapshot_path is None:
