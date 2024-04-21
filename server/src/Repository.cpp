@@ -13,6 +13,51 @@ Repository::Repository(const std::string &repoDirectory) :
     m_commitsTable(m_directory/COMMITS_TABLE_NAME)
 { }
 
+/* 
+It doesn't really work! using <openssl/sha.h>
+int sha256_file(char *path, char outputBuffer[65])
+{
+    FILE *file = fopen(path, "rb");
+    if(!file) return -534;
+
+    unsigned char hash[SHA256_DIGEST_LENGTH];
+    SHA256_CTX sha256;
+    SHA256_Init(&sha256);
+    const int bufSize = 32768;
+    unsigned char *buffer = malloc(bufSize);
+    int bytesRead = 0;
+    if(!buffer) return ENOMEM;
+    while((bytesRead = fread(buffer, 1, bufSize, file)))
+    {
+        SHA256_Update(&sha256, buffer, bytesRead);
+    }
+    SHA256_Final(hash, &sha256);
+
+    sha256_hash_string(hash, outputBuffer);
+    fclose(file);
+    free(buffer);
+    return 0;
+}
+
+Other alternative using Crypto++
+#include <cryptopp/sha.h>
+#include <cryptopp/hex.h>
+#include <cryptopp/files.h>
+
+
+const string file_hash(const boost::filesystem::path& file)
+{
+    string result;
+    CryptoPP::SHA1 hash;
+    CryptoPP::FileSource(file.string().c_str(),true,
+            new CryptoPP::HashFilter(hash, new CryptoPP::HexEncoder(
+                    new CryptoPP::StringSink(result), true)));
+    return result;
+}
+
+Crypto++ seems much easier
+*/
+
 std::string Repository::init() noexcept
 {
     try 
@@ -35,14 +80,89 @@ std::string Repository::log() noexcept
     return m_commitsTable.string();
 }
 
-std::string Repository::reset(const std::string &commitHash) noexcept
+bool isException(const std::filesystem::path &filepath, const std::filesystem::path &exceptionsPath)
+{
+    std::ifstream exceptions(exceptionsPath);
+    std::string line;
+    while (std::getline(exceptions, line))
+    {
+        if (std::filesystem::path(line) == filepath)
+            return true;
+    }
+
+    return false;
+}
+
+int traverseFileTreeRecursively(const std::filesystem::path &src, const std::filesystem::path &target, const std::filesystem::path &exceptions, void (*operation)(const std::filesystem::path&, const std::filesystem::path&, const std::filesystem::path&)) {
+    for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(src))
+    {
+        for (const auto& part : dirEntry.path()) {
+            if (part == ".vcs") {
+                continue;
+            }
+        }
+        if (std::filesystem::is_directory(dirEntry.path()))
+        {
+            if (traverseFileTreeRecursively(dirEntry.path(), target, exceptions, operation) == -1)
+            {
+                return -1;
+            }
+        }
+        else
+            if (!isException(dirEntry.path(), exceptions))
+            {
+                try
+                {
+                    operation(dirEntry.path(), src, target);
+                }
+                catch(const std::exception& e)
+                {
+                    std::cerr << e.what() << '\n';
+                    return -1;
+                }
+            }
+    }
+    return 0;
+}
+
+void write_to_changed_if_added_or_modified(const std::filesystem::path& file_from_src, const std::filesystem::path& src_dir, const std::filesystem::path& commit_dir) {
+    std::filesystem::path relative_path = std::filesystem::relative(file_from_src, src_dir);
+    std::filesystem::path file_path_in_commit = commit_dir / relative_path;
+    std::ofstream changed(commit_dir / CHANGES_FILE_NAME);
+    if (!std::filesystem::exists(file_path_in_commit))
+    {
+        changed << "-d " << relative_path << std::endl;
+    }
+}
+
+void write_to_changed_if_deleted(const std::filesystem::path& file_from_commit, const std::filesystem::path& commit_dir, const std::filesystem::path& src_dir) {
+    std::filesystem::path relative_path = std::filesystem::relative(file_from_commit, commit_dir);
+    std::filesystem::path file_path_in_src = src_dir / relative_path;
+    std::ofstream changed(commit_dir / CHANGES_FILE_NAME);
+    if (!std::filesystem::exists(file_path_in_src))
+    {
+        changed << "-a " << relative_path << std::endl;
+    }
+    else if (calculate_sha256(file_path_in_src) != calculate_sha256(file_path_in_src))
+    {
+        changed << "-m " << relative_path << std::endl;
+    }
+}
+
+std::string Repository::reset(const std::string &workDir, const std::string &commitHash) noexcept
 {
     if (commitHash.empty())
         return "Error: empty commit hash";
     else if (!std::filesystem::is_directory(commitHash))
         return "Error: commit not found";
     else
+    {
+        std::filesystem::path workDirPath = workDir;
+        std::ofstream changes(".changes", std::ios::trunc);
+        traverseFileTreeRecursively(workDirPath, m_directory/commitHash, m_directory/".empty", write_to_changed_if_added_or_modified);
+        traverseFileTreeRecursively(m_directory/commitHash, workDirPath, m_directory/".empty", write_to_changed_if_deleted);
         return (m_directory/commitHash).string();
+    }
 }
 
 int Repository::dropPreviousCommits(const std::string &headHash) noexcept
@@ -113,46 +233,19 @@ int Repository::copyModifiedFiles(const std::string &workDir, const std::string 
     return 0;
 }
 
-bool isException(const std::filesystem::path &filepath, const std::filesystem::path &exceptionsPath)
-{
-    std::ifstream exceptions(exceptionsPath);
-    std::string line;
-    while (std::getline(exceptions, line))
-    {
-        if (std::filesystem::path(line) == filepath)
-            return true;
-    }
-
-    return false;
+void copyOperation(const std::filesystem::path& file, const std::filesystem::path& src, const std::filesystem::path& target) {
+    return std::filesystem::copy(file, target);
 }
 
 int copyDirContentRecursively(const std::filesystem::path &src, const std::filesystem::path &target, const std::filesystem::path &exceptions)
 {
-    for (const auto& dirEntry : std::filesystem::recursive_directory_iterator(src))
-    {
-        if (std::filesystem::is_directory(dirEntry.path()))
-            copyDirContentRecursively(dirEntry.path(), target, exceptions);
-        else
-            if (!isException(dirEntry.path(), exceptions))
-            {
-                try
-                {
-                    std::filesystem::copy(dirEntry.path(), target);
-                } catch(const std::exception& e)
-                {
-                    std::cerr << e.what() << '\n';
-                    return -1;
-                }
-            }
-    }
-
-    return 0;
+    return traverseFileTreeRecursively(src, target, exceptions, copyOperation);
 }
 
-int Repository::copyUnmodifedFiles(const std::string &headHash, const std::string &newHash) noexcept
+
+int Repository::copyUnmodifiedFiles(const std::string &headHash, const std::string &newHash) noexcept
 {
     auto handledFilesListPath = std::filesystem::path(newHash)/TMP_FILE_NAME;
-
     return copyDirContentRecursively(m_directory/headHash, m_directory/newHash, handledFilesListPath);
 }
 
@@ -207,7 +300,7 @@ std::string Repository::commit(const std::string &message, const std::string &wo
         if (copyModifiedFiles(workDir, newHash) != 0)
                 return "Internal error";
     
-        if (copyUnmodifedFiles(headHash, newHash) != 0)
+        if (copyUnmodifiedFiles(headHash, newHash) != 0)
             return "Internal error";
 
         std::filesystem::remove(m_directory/newHash/TMP_FILE_NAME);
