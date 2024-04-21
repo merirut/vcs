@@ -113,8 +113,11 @@ def init(args):
     tracked_file = hidden_dir / TRACKED_FILE_NAME
     tracked_file.touch()
 
-    tracked_file = hidden_dir / HEAD_HASH
-    tracked_file.touch()
+    head_file = hidden_dir / HEAD_HASH
+    head_file.touch()
+    with open(head_file, "w") as file:
+        file.write("0")
+
     print("Local repository initialized successfully")
 
     ok = server.init()
