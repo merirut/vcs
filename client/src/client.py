@@ -66,8 +66,9 @@ def _add_file_to_tracked(metadir: Path, path: Path):
     if not _is_in_tracked(metadir, rel_path):
         with open(tracked_file, "a") as out:
             out.write(str(rel_path) + "\n")
-        print("Added: ", rel_path)
-    print("Already tracking")
+        print("Added:", rel_path)
+    else:
+        print(rel_path, "is already tracked")
 
 
 def _delete_file_from_tracked(metadir, path):
@@ -97,7 +98,7 @@ def _traverse_file_tree_from_dir(metadir, path, function_applied_to_file):
 def init(args):
     existing_metadir = _find_metadir()
     if existing_metadir is not None:
-        print("Repositories could not be nested: ", existing_metadir, "\n")
+        print("Repositories could not be nested:", existing_metadir, "\n")
         return
 
     cur_dir = Path.cwd()
@@ -138,7 +139,7 @@ def status(args):
 def _status_see_if_file_added_or_modified(metadir, nested_file):
     rel_path = nested_file.relative_to(metadir.parent)
     lastcommit_file = metadir / "lastcommit" / rel_path
-    is_in_tracked = _check_if_in_tracked(metadir, rel_path)
+    is_in_tracked = _is_in_tracked(metadir, rel_path)
     if not lastcommit_file.exists():
         print(colorama.Fore.GREEN + "Tracked" if is_in_tracked else "Untracked" +
             f" - {rel_path} - added and last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
@@ -150,12 +151,12 @@ def _status_see_if_file_added_or_modified(metadir, nested_file):
 def _status_see_if_file_deleted(metadir, nested_file):
     rel_path = nested_file.relative_to(metadir / "lastcommit")
     local_file = metadir.parent / rel_path
-    is_in_tracked = _check_if_in_tracked(metadir, rel_path)
+    is_in_tracked = _is_in_tracked(metadir, rel_path)
     if not local_file.exists():
         print(colorama.Fore.RED + "Tracked" if is_in_tracked else "Untracked" + f" - {rel_path} - deleted")
 
 
-def _check_if_in_tracked(metadir, path):
+def _is_in_tracked(metadir, path):
     rel_path = path.relative_to(metadir.parent)
     tracked_file = metadir / TRACKED_FILE_NAME
     with open(tracked_file, "r") as file:
@@ -174,6 +175,7 @@ def commit(message):
     head_hash = _get_head_hash()
     new_hash = _generate_new_hash()
     success = server.commit(message, str(metadir.parent), head_hash, new_hash)
+
     if not success:
         print("Something went wrong!")
 
@@ -261,7 +263,7 @@ def log(args):
     else:
         head_hash = head_hash.strip()
 
-    print("Commit log: ")
+    print("Commit log:")
     for hsh, message in commits:
         pointer = "->" if hsh == head_hash else "  "
         print(f'{pointer} {hsh}: "{message}"')
