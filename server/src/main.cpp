@@ -73,9 +73,11 @@ int main(int argc, char* argv[])
         std::string response;
         if (command == "init") 
         {
+            std::cout << "Init request" << std::endl;
             response = repository.init(); 
         } else if (command == "log") 
         {
+            std::cout << "Log request" << std::endl;
             response = repository.log();
         }
         else if (command == "commit") 
@@ -83,15 +85,20 @@ int main(int argc, char* argv[])
             std::string message, currDir, headHash, newHash;
             iss >> std::quoted(message) >> currDir >> headHash >> newHash;
 
+            std::cout << "Commit request: \"" << message << "\" " << currDir << " " << headHash << " " << newHash << std::endl;
+
             response = repository.commit(message, currDir, headHash, newHash);
         } else if (command == "reset") 
         {
             std::string commitHash;
             iss >> commitHash;
 
+            std::cout << "Reset request: " << commitHash << std::endl;
+
             response = repository.reset(commitHash);
         } else 
         {
+            std::cout << "Invalid request" << std::endl;
             response = "Error: invalid command";
         }
 

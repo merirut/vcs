@@ -6,7 +6,7 @@ from hash_utils import calculate_hash_for_file, calculate_hash_for_files
 
 HIDDEN_DIR_NAME = ".vcs"
 TRACKED_FILE_NAME = ".tracked"
-CHANGED_FILE_NAME = ".changed"
+CHANGED_FILE_NAME = ".changes"
 HEAD_HASH = ".head"
 
 
@@ -174,7 +174,8 @@ def _is_file_tracked(metadir, rel_path):
         return str(rel_path) in tracked_file.read().splitlines()
 
 
-def commit(message):
+def commit(args):
+    message = args.message
     metadir = _find_metadir()
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
@@ -293,4 +294,4 @@ def log(args):
     print("Commit log:")
     for hsh, timestamp, message in commits:
         pointer = "->" if hsh == head_hash else "  "
-        print(f'{pointer} {hsh}: {timestamp} : "{message}"')
+        print(f'{pointer} {hsh}: {timestamp} : {message}')

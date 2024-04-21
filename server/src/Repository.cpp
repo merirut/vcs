@@ -41,7 +41,7 @@ std::string Repository::reset(const std::string &commitHash) noexcept
 {
     if (commitHash.empty())
         return "Error: empty commit hash";
-    else if (!std::filesystem::is_directory(commitHash))
+    else if (!std::filesystem::is_directory(m_directory/commitHash))
         return "Error: commit not found";
     else
         return (m_directory/commitHash).string();
