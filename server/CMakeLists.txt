@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 
 add_executable(${PROJECT_NAME}
     src/main.cpp 
+    src/Repository.h 
+    src/Repository.cpp
     )
 
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

@@ -8,31 +8,10 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 
+#include "Repository.h"
+
 const int PORT = 8080;
 const int BACKLOG = 5;
-const std::string COMMITS_TABLE_NAME = "commits_table.txt";
-
-int initRepo(const std::string &repoDirPath, const std::string &commitsTableFile) 
-{
-    try 
-    {
-        std::filesystem::create_directory(repoDirPath);
-        std::ofstream commitsTable(commitsTableFile);
-        
-        std::cout << "Created repository in " << repoDirPath << std::endl;
-        return 0;
-    } catch (const std::filesystem::filesystem_error& e) 
-    {
-        std::cerr << "Error creating repository directory: " << e.what() << std::endl;
-        return -1;
-    }
-}
-
-std::string commit(const std::string& message, const std::string& currDir, const std::string& headHash, const std::string& newHash) 
-{
-    // TODO
-    return "OK";
-}
 
 int main(int argc, char* argv[]) 
 {
@@ -42,8 +21,7 @@ int main(int argc, char* argv[])
         return 1;
     }
 
-    const std::string REPO_DIRECTORY = argv[1];
-    const std::string COMMITS_TABLE = std::filesystem::path(REPO_DIRECTORY) / COMMITS_TABLE_NAME;
+    Repository repository(argv[1]);
 
     int server_fd, new_socket;
     struct sockaddr_in address;
@@ -92,31 +70,23 @@ int main(int argc, char* argv[])
         std::string response;
         if (command == "init") 
         {
-            response = (initRepo(REPO_DIRECTORY, COMMITS_TABLE) == 0) ? "Repo created" : "Repo creation failed";
+            response = repository.init();
         } else if (command == "log") 
         {
-            response = COMMITS_TABLE;
+            response = repository.log();
         }
         else if (command == "commit") 
         {
             std::string message, currDir, headHash, newHash;
             iss >> std::quoted(message) >> currDir >> headHash >> newHash;
 
-            if (message.empty() or currDir.empty() or headHash.empty() or newHash.empty())
-                response = "Error: not enough arguments. Usage: commit \"[commit_message]\" [head_hash] [new hash]";
-            else
-                response = commit(message, currDir, headHash, newHash);
+            response = repository.commit(message, currDir, headHash, newHash);
         } else if (command == "reset") 
         {
             std::string commitHash;
             iss >> commitHash;
 
-            if (commitHash.empty())
-                response = "Error: empty commit hash";
-            else if (!std::filesystem::is_directory(commitHash))
-                response = "Error: commit not found";
-            else
-                response = (std::filesystem::path(REPO_DIRECTORY) / commitHash).string();
+            response = repository.reset(commitHash);
         } else 
         {
             response = "Error: invalid command";
