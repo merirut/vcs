@@ -1,15 +1,14 @@
-import colorama
-from create_changes import calculate_hash
-from pathlib import Path
-from datetime import datetime
 import shutil
+from pathlib import Path
 
 import serverstub as server
+from create_changes import calculate_hash
 
 HIDDEN_DIR_NAME = ".vcs"
 TRACKED_FILE_NAME = ".tracked"
 CHANGED_FILE_NAME = ".changed"
 HEAD_HASH = ".head"
+
 
 def _find_metadir() -> Path | None:
     cur_dir = Path.cwd()
@@ -22,7 +21,15 @@ def _find_metadir() -> Path | None:
             return candidate
 
 
+def _get_head_hash() -> str | None:
+    hash_head_file = _find_metadir() / HEAD_HASH
+    with open(hash_head_file, "r") as inp:
+        line = inp.readline()
+    return line
+
+
 def add(args):
+    # TODO: add file to tracked with sha = 0
     return _apply_tracked_operation_to_files(args, _add_dir_to_tracked, _add_file_to_tracked, _add_dir_to_tracked)
 
 
@@ -80,18 +87,23 @@ def _delete_file_from_tracked(metadir, path):
 
 
 def _add_dir_to_tracked(metadir: Path, path: Path):
-    return _traverse_file_tree_from_dir(metadir, path, _add_file_to_tracked)
+    return _traverse_from(metadir, path, _add_file_to_tracked)
 
 
 def _delete_dir_from_tracked(metadir, path):
-    return _traverse_file_tree_from_dir(metadir, path, _delete_file_from_tracked)
+    return _traverse_from(metadir, path, _delete_file_from_tracked)
 
 
-def _traverse_file_tree_from_dir(metadir, path, function_applied_to_file):
+def _traverse_from(metadir, path, function_applied_to_file):
     for nested_path in path.rglob('*'):
         if nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts:
             print("Trav", nested_path)
             function_applied_to_file(metadir, nested_path)
+
+
+def _list_traversal_from(path):
+    return filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
+                  path.rglob('*'))
 
 
 def init(args):
@@ -128,44 +140,56 @@ def init(args):
         print("Failed to initialize remote repository")
 
 
+def _extract_tracked_shas(metadir):
+    tracked_file = metadir / TRACKED_FILE_NAME
+    tracked_shas_from_prev_commit = {}
+    with open(tracked_file, "r") as file:
+        lines = file.read().splitlines()
+        for line in lines:
+            rel_path, sha = line.split(" ")
+            tracked_shas_from_prev_commit[rel_path] = sha
+    return tracked_shas_from_prev_commit
+
+
 def status(args):
-    colorama.init()
     metadir = _find_metadir()
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
-    _traverse_file_tree_from_dir(metadir, metadir.parent, _status_see_if_file_added_or_modified)
-    _traverse_file_tree_from_dir(metadir, metadir / "lastcommit", _status_see_if_file_deleted)
+
+    root_dir = metadir.parent
+    sha_by_rel_path = _extract_tracked_shas(metadir)
+    all_files = _list_traversal_from(root_dir)
+    modified_files = []
+    added_files = []
+    for file in all_files:
+        if file in sha_by_rel_path:
+            fresh_sha = calculate_hash(file)
+            sha_from_last_commit = sha_by_rel_path.pop(file)
+            if sha_from_last_commit == "0":  # added first time, not committed yet
+                added_files.append(file)
+            elif sha_from_last_commit != fresh_sha:
+                modified_files.append(file)
+    deleted_files = sha_by_rel_path.keys()
+
+    if not added_files and not modified_files and not deleted_files:
+        print("Nothing changed")
+        return
+
+    for file in added_files:
+        print("Added:", file)
+
+    for file in modified_files:
+        print("Modified:", file)
+
+    for file in deleted_files:
+        print("Deleted:", file)
 
 
-def _status_see_if_file_added_or_modified(metadir, nested_file):
-    rel_path = nested_file.relative_to(metadir.parent)
-    lastcommit_file = metadir / "lastcommit" / rel_path
-    is_in_tracked = _is_in_tracked(metadir, rel_path)
-    if not lastcommit_file.exists():
-        print(colorama.Fore.GREEN + "Tracked" if is_in_tracked else "Untracked" +
-            f" - {rel_path} - added and last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
-    elif nested_file.stat().st_mtime != lastcommit_file.stat().st_mtime:
-        print(colorama.Fore.GREEN + "Tracked" if is_in_tracked else "Untracked" +
-            f" - {rel_path} - last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
-
-
-def _status_see_if_file_deleted(metadir, nested_file):
-    rel_path = nested_file.relative_to(metadir / "lastcommit")
-    local_file = metadir.parent / rel_path
-    is_in_tracked = _is_in_tracked(metadir, rel_path)
-    if not local_file.exists():
-        print(colorama.Fore.RED + "Tracked" if is_in_tracked else "Untracked" + f" - {rel_path} - deleted")
-
-
-def _is_in_tracked(metadir, path):
-    rel_path = path.relative_to(metadir.parent)
-    tracked_file = metadir / TRACKED_FILE_NAME
-    with open(tracked_file, "r") as file:
-        for line in file.readlines():
-            if line.strip() == str(rel_path):
-                return 1
-    return 0
+def _is_in_tracked(metadir, rel_path):
+    tracked_path = metadir / TRACKED_FILE_NAME
+    with open(tracked_path, "r") as tracked_file:
+        return str(rel_path) in tracked_file.read().splitlines()
 
 
 def commit(message):
@@ -179,38 +203,6 @@ def commit(message):
     ok = server.commit(message, str(metadir.parent), head_hash, new_hash)
     if not ok:
         print("Something went wrong!")
-
-
-
-# Something along these lines - I'm too tired for this rn
-# def generate_new_hash(directory):
-#     # Create a new SHA-1 hash object
-#     sha1 = hashlib.sha1()
-#
-#     # Iterate over all files and directories in the directory
-#     for root, dirs, files in os.walk(directory):
-#         # Sort the directories and files for consistency
-#         dirs.sort()
-#         files.sort()
-#
-#         # Update the hash with the relative path and content of each file
-#         for file in files:
-#             file_path = os.path.join(root, file)
-#             with open(file_path, 'rb') as f:
-#                 # Update the hash with the relative path
-#                 sha1.update(os.path.relpath(file_path, directory).encode('utf-8'))
-#
-#                 # Update the hash with the content of the file
-#                 sha1.update(f.read())
-#
-#     # Return the hexadecimal representation of the hash digest
-#     return sha1.hexdigest()
-
-def _get_head_hash() -> str | None:
-    hash_head_file = _find_metadir() / HEAD_HASH
-    with open(hash_head_file, "r") as inp:
-        line = inp.readline()
-    return line
 
 
 def reset(args):
