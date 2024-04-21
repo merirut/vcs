@@ -276,6 +276,6 @@ def log(args):
         head_hash = head_hash.strip()
 
     print("Commit log:")
-    for hsh, message in commits:
+    for hsh, timestamp, message in commits:
         pointer = "->" if hsh == head_hash else "  "
-        print(f'{pointer} {hsh}: "{message}"')
+        print(f'{pointer} {hsh}: {timestamp} : "{message}"')
