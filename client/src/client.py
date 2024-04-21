@@ -36,7 +36,7 @@ def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_ap
                                       function_nothing_specified):
     metadir = _find_metadir()
     if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?\n")
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
     root_dir = metadir.parent
     relative_paths = args.files
@@ -44,11 +44,11 @@ def _apply_tracked_operation_to_files(args, function_applied_to_dir, function_ap
         function_nothing_specified(metadir, root_dir)
     for rel_path in relative_paths:
         if _is_in_vcs(rel_path):
-            print(f"{rel_path} - Files in .vcs cannot be altered!\n")
+            print(f"{rel_path} - Files in .vcs cannot be altered!")
             continue
         path = root_dir / rel_path
         if not path.exists():
-            print(f"Destination {rel_path} does not exist\n")
+            print(f"Destination {rel_path} does not exist")
             continue
         if path.is_dir():
             function_applied_to_dir(metadir, path)
@@ -63,9 +63,11 @@ def _is_in_vcs(path):
 def _add_file_to_tracked(metadir: Path, path: Path):
     rel_path = path.relative_to(metadir.parent)
     tracked_file = metadir / TRACKED_FILE_NAME
-    with open(tracked_file, "a") as out:
-        out.write(str(rel_path) + '\n')
-    print("Added:", rel_path)
+    if not _is_in_tracked(metadir, rel_path):
+        with open(tracked_file, "a") as out:
+            out.write(str(rel_path) + "\n")
+        print("Added: ", rel_path)
+    print("Already tracking")
 
 
 def _delete_file_from_tracked(metadir, path):
@@ -101,7 +103,7 @@ def init(args):
     cur_dir = Path.cwd()
     hidden_dir = cur_dir / HIDDEN_DIR_NAME
     if hidden_dir.exists():
-        print("Repository in this folder already exists\n")
+        print("Repository in this folder already exists")
         return
 
     hidden_dir.mkdir()
@@ -114,20 +116,20 @@ def init(args):
 
     tracked_file = hidden_dir / HEAD_HASH
     tracked_file.touch()
-    print('Local repository initialized successfully\n')
+    print("Local repository initialized successfully")
 
     ok = server.init()
     if ok:
-        print('Remote repository initialized successfully\n')
+        print("Remote repository initialized successfully")
     else:
-        print('Failed to initialize remote repository\n')
+        print("Failed to initialize remote repository")
 
 
 def status(args):
     colorama.init()
     metadir = _find_metadir()
     if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?\n")
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
     _traverse_file_tree_from_dir(metadir, metadir.parent, _status_see_if_file_added_or_modified)
     _traverse_file_tree_from_dir(metadir, metadir / "lastcommit", _status_see_if_file_deleted)
@@ -139,10 +141,10 @@ def _status_see_if_file_added_or_modified(metadir, nested_file):
     is_in_tracked = _check_if_in_tracked(metadir, rel_path)
     if not lastcommit_file.exists():
         print(colorama.Fore.GREEN + "Tracked" if is_in_tracked else "Untracked" +
-            f" - {rel_path} - added and last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f" - {rel_path} - added and last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
     elif nested_file.stat().st_mtime != lastcommit_file.stat().st_mtime:
         print(colorama.Fore.GREEN + "Tracked" if is_in_tracked else "Untracked" +
-            f" - {rel_path} - last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f" - {rel_path} - last modified at {datetime.fromtimestamp(nested_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M:%S')}")
 
 
 def _status_see_if_file_deleted(metadir, nested_file):
@@ -150,7 +152,7 @@ def _status_see_if_file_deleted(metadir, nested_file):
     local_file = metadir.parent / rel_path
     is_in_tracked = _check_if_in_tracked(metadir, rel_path)
     if not local_file.exists():
-        print(colorama.Fore.RED + "Tracked" if is_in_tracked else "Untracked" + f" - {rel_path} - deleted\n")
+        print(colorama.Fore.RED + "Tracked" if is_in_tracked else "Untracked" + f" - {rel_path} - deleted")
 
 
 def _check_if_in_tracked(metadir, path):
@@ -166,7 +168,7 @@ def _check_if_in_tracked(metadir, path):
 def commit(message):
     metadir = _find_metadir()
     if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?\n")
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
     generate_changes(metadir)
     head_hash = _get_head_hash()
@@ -211,19 +213,19 @@ def _get_head_hash() -> str | None:
 def reset(args):
     metadir = _find_metadir()
     if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?\n")
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
 
     # TODO: prompt user about local changes deletion
     hash_to_reset = args.hash
     snapshot_path = server.reset(hash_to_reset)
     if snapshot_path is None:
-        print("Failed to reset: no snapshot path returned\n")
+        print("Failed to reset: no snapshot path returned")
         return
 
     snapshot_path = Path(snapshot_path)
     if not snapshot_path.exists():
-        print("Failed to reset: snapshot path not exists\n")
+        print("Failed to reset: snapshot path not exists")
         return
 
     root_dir = metadir.parent
@@ -241,25 +243,25 @@ def reset(args):
 def log(args):
     metadir = _find_metadir()
     if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?\n")
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
 
     commits = server.log()
     if commits is None:
-        print("Failed to receive commit logs from server\n")
+        print("Failed to receive commit logs from server")
         return
 
     if not commits:
-        print("No commits added yet\n")
+        print("No commits added yet")
         return
 
     head_hash = _get_head_hash()
     if head_hash is None or not head_hash.strip():
-        print("Alert: Head is not defined\n")
+        print("Alert: Head is not defined")
     else:
         head_hash = head_hash.strip()
 
-    print("Commit log:\n")
+    print("Commit log: ")
     for hsh, message in commits:
         pointer = "->" if hsh == head_hash else "  "
-        print(f'{pointer} {hsh}: "{message}"\n')
+        print(f'{pointer} {hsh}: "{message}"')
