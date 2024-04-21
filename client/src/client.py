@@ -2,7 +2,7 @@ import shutil
 from pathlib import Path
 
 import serverstub as server
-from create_changes import calculate_hash
+from hash_utils import calculate_hash_for_file, calculate_hash_for_files
 
 HIDDEN_DIR_NAME = ".vcs"
 TRACKED_FILE_NAME = ".tracked"
@@ -19,6 +19,11 @@ def _find_metadir() -> Path | None:
         candidate = parent / HIDDEN_DIR_NAME
         if candidate.exists():
             return candidate
+
+
+def _list_traversal_from(path: Path) -> list[Path]:
+    return list(filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
+                       path.rglob('*')))
 
 
 def _get_head_hash() -> str | None:
@@ -65,11 +70,6 @@ def _add_file_to_tracked(metadir: Path, rel_path_from_root: Path):
         print(rel_path_from_root, "is already tracking")
 
 
-def _list_traversal_from(path: Path) -> list[Path]:
-    return list(filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
-                       path.rglob('*')))
-
-
 def init(args):
     existing_metadir = _find_metadir()
     if existing_metadir is not None:
@@ -104,40 +104,21 @@ def init(args):
         print("Failed to initialize remote repository")
 
 
-def _read_tracked(metadir):
+def _read_tracked(metadir: Path, relative: bool = True) -> dict[str, str]:
     tracked_file = metadir / TRACKED_FILE_NAME
     tracked_shas_from_prev_commit = {}
+    root_dir = metadir.parent
     with open(tracked_file, "r") as file:
         lines = file.read().splitlines()
         for line in lines:
             rel_path, sha = line.split(" ")
-            tracked_shas_from_prev_commit[rel_path] = sha
+            path = rel_path if relative else root_dir / rel_path
+            tracked_shas_from_prev_commit[path] = sha
     return tracked_shas_from_prev_commit
 
 
 def status(args):
-    metadir = _find_metadir()
-    if metadir is None:
-        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
-        return
-
-    root_dir = metadir.parent
-    sha_by_rel_path = _read_tracked(metadir)
-    all_files = _list_traversal_from(root_dir)
-    modified_files = []
-    added_files = []
-    for file in all_files:
-        file = str(file.relative_to(root_dir))
-        if file in sha_by_rel_path:
-            fresh_sha = calculate_hash(file)
-            sha_from_last_commit = sha_by_rel_path.pop(file)
-            if sha_from_last_commit == "0":  # added first time, not committed yet
-                added_files.append(file)
-            elif sha_from_last_commit != fresh_sha:
-                modified_files.append(file)
-
-    deleted_files = sha_by_rel_path.keys()
-
+    added_files, modified_files, deleted_files = _calculate_status()
     if not added_files and not modified_files and not deleted_files:
         print("Nothing changed")
         return
@@ -152,7 +133,32 @@ def status(args):
         print("Deleted:", file)
 
 
-def _is_in_tracked(metadir, rel_path):
+def _calculate_status():
+    metadir = _find_metadir()
+    if metadir is None:
+        print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
+        return
+
+    root_dir = metadir.parent
+    sha_by_rel_path = _read_tracked(metadir)
+    all_files = _list_traversal_from(root_dir)
+    modified_files = []
+    added_files = []
+    for file in all_files:
+        file = str(file.relative_to(root_dir))
+        if file in sha_by_rel_path:
+            fresh_sha = calculate_hash_for_file(file)
+            sha_from_last_commit = sha_by_rel_path.pop(file)
+            if sha_from_last_commit == "0":  # added first time, not committed yet
+                added_files.append(file)
+            elif sha_from_last_commit != fresh_sha:
+                modified_files.append(file)
+
+    deleted_files = sha_by_rel_path.keys()
+    return added_files, modified_files, deleted_files
+
+
+def _is_file_tracked(metadir, rel_path):
     tracked_path = metadir / TRACKED_FILE_NAME
     with open(tracked_path, "r") as tracked_file:
         return str(rel_path) in tracked_file.read().splitlines()
@@ -163,12 +169,59 @@ def commit(message):
     if metadir is None:
         print(HIDDEN_DIR_NAME, "directory not found. Is repository initialized?")
         return
+    root_dir = metadir.parent
     head_hash = _get_head_hash()
-    # generate_changes(metadir)
-    # new_hash = _generate_new_hash()
-    ok = server.commit(message, str(metadir.parent), head_hash, new_hash)
+    # generate .changes
+    _generate_changes_file(metadir)
+    # calculate new commit hash
+    new_hash, sha_by_abs_path = calculate_hash_for_files(_read_tracked(metadir, relative=False))
+    # send to server
+    ok = server.commit(message, str(root_dir), head_hash, new_hash)
     if not ok:
-        print("Something went wrong!")
+        print("Failed to commit: something went wrong!")
+        return
+    # update shas in .tracked
+    _override_tracked(metadir, sha_by_abs_path)
+    # update head
+    _override_head(metadir, head_hash)
+    # clear changes
+    _clear_changes(metadir)
+
+
+def _override_tracked(metadir, sha_by_rel_path):
+    tracked_file = metadir / TRACKED_FILE_NAME
+    with open(tracked_file, "w") as file:
+        for rel_path, sha in sha_by_rel_path:
+            file.write(rel_path + " " + sha)
+
+
+def _override_head(metadir, new_head_hash):
+    head_file = metadir / HEAD_HASH
+    with open(head_file, "w") as file:
+        file.write(new_head_hash)
+
+
+def _clear_changes(metadir):
+    changes_file = metadir / CHANGED_FILE_NAME
+    open(changes_file, 'w').close()
+
+
+def _generate_changes_file(metadir: Path) -> None:
+    added_files, modified_files, deleted_files = _calculate_status()
+    if not added_files and not modified_files and not deleted_files:
+        print("There is nothing to commit!")
+        return
+
+    changes_file = metadir / CHANGED_FILE_NAME
+    with open(changes_file, "w") as file:
+        for f in added_files:
+            file.write(f"a {f}\n")
+
+        for f in modified_files:
+            file.write(f"m {f}\n")
+
+        for f in deleted_files:
+            file.write(f"d {f}\n")
 
 
 def reset(args):
