@@ -15,10 +15,14 @@ if __name__ == '__main__':
     log_parser = subparsers.add_parser('log', help='Show commits log')
     log_parser.set_defaults(func=log)
 
-    add_parser = subparsers.add_parser('add', help='Start tracking file')
+    add_parser = subparsers.add_parser('add', help='Start tracking files')
     add_parser.add_argument('files', nargs='*',
-                            help='List of files to add. If no files specified add all from root directory.')
+                            help='List of files to add. If no files specified adds all from root directory.')
     add_parser.set_defaults(func=add)
+
+    remove_parser = subparsers.add_parser('remove', help='Stop tracking files')
+    remove_parser.add_argument('files', nargs='*',
+                               help='List of files to remove. If no files specified removes all from tracked list')
 
     commit_parser = subparsers.add_parser('commit', help='Commit files (send to the server)')
     commit_parser.add_argument('message', help='Commit message')
