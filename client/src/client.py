@@ -65,13 +65,6 @@ def _add_file_to_tracked(metadir: Path, rel_path_from_root: Path):
         print(rel_path_from_root, "is already tracking")
 
 
-def _traverse_from(metadir, path, function_applied_to_file):
-    for nested_path in path.rglob('*'):
-        if nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts:
-            print("Trav", nested_path)
-            function_applied_to_file(metadir, nested_path)
-
-
 def _list_traversal_from(path: Path) -> list[Path]:
     return list(filter(lambda nested_path: nested_path.is_file() and HIDDEN_DIR_NAME not in nested_path.parts,
                        path.rglob('*')))
